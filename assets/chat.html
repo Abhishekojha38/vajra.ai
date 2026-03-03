@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aham</title>
+<link rel="icon" href="data:,">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #0a0a14; color: #e0e0f0;
+       display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+header { padding: 10px 20px; background: #111120; border-bottom: 1px solid #1e1e3a;
+         display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+header h1 { font-size: 1rem; font-weight: 600; color: #a78bfa; }
+#model-label { font-size: .75rem; color: #555; margin-left: auto; }
+
+/* Two-column layout: side panel + chat */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Side panel ── */
+#side { width: 260px; min-width: 200px; background: #0d0d1a; border-right: 1px solid #1e1e3a;
+        display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+
+.panel-section { display: flex; flex-direction: column; overflow: hidden; flex: 1 1 50%; }
+.panel-section + .panel-section { border-top: 1px solid #1e1e3a; }
+
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; font-size: .72rem; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: #6d5aff; cursor: pointer; user-select: none;
+  background: #0d0d1a; flex-shrink: 0;
+}
+.panel-header:hover { background: #111128; }
+.panel-header .chevron { font-size: .65rem; transition: transform .2s; }
+.panel-header.collapsed .chevron { transform: rotate(-90deg); }
+
+.panel-body { overflow-y: auto; padding: 6px 8px; font-size: .72rem;
+              font-family: monospace; color: #999; flex: 1;
+              scrollbar-width: thin; scrollbar-color: #1e1e3a transparent; }
+.panel-header.collapsed + .panel-body { display: none; }
+
+.panel-item { padding: 5px 6px; border-radius: 4px; margin-bottom: 4px;
+              border: 1px solid #1a1a30; background: #0a0a1a; line-height: 1.5; }
+.panel-item:last-child { margin-bottom: 0; }
+.panel-item .pi-name  { color: #a78bfa; font-weight: 600; }
+.panel-item .pi-meta  { color: #555; margin-top: 2px; }
+.pi-badge { display: inline-block; padding: 1px 5px; border-radius: 3px;
+            font-size: .64rem; font-weight: 600; }
+.pi-badge.running { background: #14532d; color: #4ade80; }
+.pi-badge.paused  { background: #451a03; color: #fb923c; }
+
+.panel-empty { color: #333; text-align: center; padding: 16px 8px; font-style: italic; }
+.panel-refresh { font-size: .6rem; color: #2a2a44; text-align: right;
+                 padding: 3px 8px 4px; flex-shrink: 0; }
+
+/* ── Chat area ── */
+#chat-col { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+#chat { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex;
+        flex-direction: column; gap: 10px; scrollbar-width: thin;
+        scrollbar-color: #1e1e3a transparent; }
+
+.msg { max-width: 80%; padding: 10px 14px; border-radius: 10px; line-height: 1.55;
+       font-size: .92rem; white-space: pre-wrap; word-break: break-word; }
+.msg.user    { align-self: flex-end; background: #3b1d6e; color: #ede9fe; }
+.msg.agent   { align-self: flex-start; background: #111120; border: 1px solid #1e1e3a; }
+.msg.agent code { background: #0a0a14; color: #7dd3fc; padding: 1px 5px;
+                  border-radius: 4px; font-family: monospace; font-size: .88em; }
+.msg.agent pre { background: #0a0a14; border: 1px solid #1e1e3a; border-radius: 6px;
+                 padding: 10px; overflow-x: auto; margin: 6px 0; }
+.msg.agent pre code { background: none; padding: 0; }
+.msg.thinking { align-self: flex-start; color: #555; font-style: italic;
+                background: transparent; border: none; padding-left: 4px; }
+.msg.error    { align-self: flex-start; color: #f59e0b; background: #1a1000;
+                border: 1px solid #78350f; border-radius: 6px; }
+
+#input-row { display: flex; gap: 8px; padding: 12px 20px; background: #111120;
+             border-top: 1px solid #1e1e3a; flex-shrink: 0; }
+#msg { flex: 1; background: #0a0a14; border: 1px solid #1e1e3a; color: #e0e0f0;
+       border-radius: 8px; padding: 9px 14px; font-size: .92rem; font-family: inherit;
+       resize: none; outline: none; max-height: 120px; }
+#msg:focus { border-color: #6d28d9; }
+#send-btn { background: #5b21b6; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 20px; cursor: pointer; font-size: .92rem; white-space: nowrap; }
+#send-btn:hover:not(:disabled) { background: #6d28d9; }
+#send-btn:disabled { opacity: .35; cursor: default; }
+
+#debug-bar { display: none; background: #060610; border-top: 1px solid #1a1a3a;
+             font-family: monospace; font-size: .72rem; color: #444466;
+             padding: 4px 20px; max-height: 110px; overflow-y: auto; flex-shrink: 0; }
+#debug-bar.visible { display: block; }
+.d-info { color: #5577ff; } .d-ok { color: #4ade80; } .d-error { color: #ff6b6b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Aham</h1>
+  <span id="model-label">connecting…</span>
+</header>
+
+<div id="main">
+
+  <!-- Side panel -->
+  <div id="side">
+
+    <!-- Background Tasks -->
+    <div class="panel-section">
+      <div class="panel-header" id="tasks-hdr" onclick="togglePanel('tasks')">
+        <span>⚙ Background Tasks</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="panel-body" id="tasks-body">
+        <div class="panel-empty">Loading…</div>
+      </div>
+      <div class="panel-refresh" id="tasks-ts"></div>
+    </div>
+
+    <!-- tmux Sessions -->
+    <div class="panel-section">
+      <div class="panel-header" id="tmux-hdr" onclick="togglePanel('tmux')">
+        <span>🖥 tmux Sessions</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="panel-body" id="tmux-body">
+        <div class="panel-empty">Loading…</div>
+      </div>
+      <div class="panel-refresh" id="tmux-ts"></div>
+    </div>
+
+  </div><!-- /side -->
+
+  <!-- Chat column -->
+  <div id="chat-col">
+    <div id="chat"></div>
+
+    <div id="input-row">
+      <textarea id="msg" rows="1" placeholder="Ask Aham anything…"></textarea>
+      <button id="send-btn" onclick="sendMsg()">Send</button>
+    </div>
+
+    <div id="debug-bar"></div>
+  </div><!-- /chat-col -->
+
+</div><!-- /main -->
+
+<script>
+const DEBUG = window.location.search.includes('debug') ||
+              localStorage.getItem('debug') === '1';
+const chat = document.getElementById('chat');
+const inp  = document.getElementById('msg');
+const btn  = document.getElementById('send-btn');
+const dbar = document.getElementById('debug-bar');
+if (DEBUG) dbar.classList.add('visible');
+
+function dbg(level, msg) {
+  if (!DEBUG) return;
+  const line = document.createElement('div');
+  line.className = 'd-' + level;
+  line.textContent = '[' + new Date().toISOString().slice(11, 23) + '] ' + msg;
+  dbar.appendChild(line);
+  dbar.scrollTop = dbar.scrollHeight;
+}
+
+/* ── Status ── */
+fetch('/api/status')
+  .then(r => r.json())
+  .then(d => { document.getElementById('model-label').textContent = d.model || 'aham'; dbg('ok', 'ready'); })
+  .catch(e => { document.getElementById('model-label').textContent = 'offline'; dbg('error', e.message); });
+
+/* ── Side panel collapse / expand ── */
+function togglePanel(key) {
+  const hdr = document.getElementById(key + '-hdr');
+  hdr.classList.toggle('collapsed');
+}
+
+/* ── Side panel refresh ── */
+function fmtTs() {
+  return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function humanInterval(secs) {
+  if (secs < 60)   return secs + 's';
+  if (secs < 3600) return Math.round(secs / 60) + 'm';
+  return Math.round(secs / 3600) + 'h';
+}
+
+async function refreshTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    const tasks = await r.json();
+    const body = document.getElementById('tasks-body');
+    document.getElementById('tasks-ts').textContent = 'Updated ' + fmtTs();
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      body.innerHTML = '<div class="panel-empty">No scheduled tasks</div>';
+      return;
+    }
+    body.innerHTML = tasks.map(t => `
+      <div class="panel-item">
+        <div class="pi-name">#${t.id} ${escHtml(t.name)}</div>
+        <div class="pi-meta">
+          Every ${humanInterval(t.interval_seconds)}
+          &nbsp;<span class="pi-badge ${t.paused ? 'paused' : 'running'}">${t.paused ? 'paused' : 'running'}</span>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    document.getElementById('tasks-body').innerHTML =
+      '<div class="panel-empty">Unavailable</div>';
+  }
+}
+
+async function refreshTmux() {
+  try {
+    const r = await fetch('/api/tmux');
+    const sessions = await r.json();
+    const body = document.getElementById('tmux-body');
+    document.getElementById('tmux-ts').textContent = 'Updated ' + fmtTs();
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      body.innerHTML = '<div class="panel-empty">No active sessions</div>';
+      return;
+    }
+    body.innerHTML = sessions.map(s => `
+      <div class="panel-item">
+        <div class="pi-name">${escHtml(s.name)}</div>
+        <div class="pi-meta">${escHtml(s.windows)} window${s.windows === '1' ? '' : 's'}</div>
+      </div>`).join('');
+  } catch (e) {
+    document.getElementById('tmux-body').innerHTML =
+      '<div class="panel-empty">Unavailable</div>';
+  }
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+/* Initial load + auto-refresh every 10 s */
+refreshTasks();
+refreshTmux();
+setInterval(refreshTasks, 10000);
+setInterval(refreshTmux,  10000);
+
+/* ── Chat ── */
+inp.addEventListener('input', () => {
+  inp.style.height = 'auto';
+  inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
+});
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+});
+
+function addMsg(role, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  if (role === 'thinking' || role === 'error') {
+    d.textContent = text;
+  } else {
+    d.innerHTML = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+
+async function sendMsg() {
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = ''; inp.style.height = 'auto';
+  btn.disabled = true;
+  addMsg('user', text);
+  const thinking = addMsg('thinking', '⠸ Thinking…');
+  dbg('info', '→ POST /api/chat');
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    dbg('info', '← HTTP ' + r.status);
+    const raw = await r.text();
+    dbg('info', '← ' + raw.slice(0, 300));
+    let d;
+    try { d = JSON.parse(raw); }
+    catch (pe) {
+      thinking.remove();
+      addMsg('error', '⚠ Non-JSON response (HTTP ' + r.status + '):\n' + raw.slice(0, 200));
+      btn.disabled = false; inp.focus(); return;
+    }
+    thinking.remove();
+    if (!r.ok || d.error) addMsg('error', '⚠ ' + (d.error || 'HTTP ' + r.status));
+    else { dbg('ok', 'len=' + (d.response || '').length); addMsg('agent', d.response || ''); }
+  } catch (e) {
+    thinking.remove();
+    addMsg('error', '⚠ Network error: ' + e.message);
+    dbg('error', e.message);
+  }
+  btn.disabled = false;
+  inp.focus();
+  /* Refresh side panel after each chat turn (tasks may have changed) */
+  refreshTasks();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && e.key === 'D')
+    localStorage.setItem('debug', dbar.classList.toggle('visible') ? '1' : '0');
+});
+</script>
+</body>
+</html>
